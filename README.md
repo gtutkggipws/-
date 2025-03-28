@@ -1,118 +1,132 @@
+<!-- 行情展示容器 -->
 <div class="fx-market">
-  <!-- 保持原有DOM结构 -->
+  <div class="instrument" data-symbol="EURUSD"></div>
+  <div class="instrument" data-symbol="GBPUSD"></div>
+  <div class="instrument" data-symbol="AUDUSD"></div>
+  <div class="instrument" data-symbol="USDCAD"></div>
+  <div class="instrument" data-symbol="USDCHF"></div>
+  <div class="instrument" data-symbol="USDCNY"></div>
+  <div class="instrument" data-symbol="USDJPY"></div>
+  <div class="instrument" data-symbol="XAUUSD"></div>
+  <div class="instrument" data-symbol="BTCUSD"></div>
 </div>
 
 <script>
-// 通过代理服务器隐藏真实API密钥
-const PROXY_URL = '/api/fxmarket';
+const API_KEY = 'j9Lqn6hBZeHZVK5r3bSA_h6ICS_API_KEY'; // ⚠️ 建议放到后端
 
-// 支持的所有交易品种
-const SYMBOLS = [
-  'EURUSD', 'GBPUSD', 'AUDUSD', 
-  'USDCAD', 'USDCHF', 'USD/CNY',  // 使用API接受的符号格式
-  'USDJPY', 'XAU/USD', 'BTC/USD'
-];
-
-// 批量获取数据
-async function fetchMarketData() {
+// 统一数据获取函数
+async function getFXData(symbol) {
   try {
-    const response = await fetch(`${PROXY_URL}?symbols=${SYMBOLS.join(',')}`);
-    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-    return await response.json();
+    const response = await fetch(
+      `https://marketdataapi.com/api/v1/asset/${symbol}/quote?apikey=${API_KEY}`
+    );
+    if (!response.ok) throw new Error(`API错误: ${response.status}`);
+    const data = await response.json();
+
+    return {
+      price: data.last_price || 'N/A',
+      change: data.change_percent || 0,
+      time: new Date(data.timestamp * 1000)
+    };
   } catch (error) {
-    console.error('市场数据获取失败:', error);
+    console.error(`获取 ${symbol} 数据失败:`, error);
     return null;
   }
 }
 
-// 数据更新逻辑
+// 动态更新行情
 async function updateMarket() {
-  const marketData = await fetchMarketData();
-  
-  SYMBOLS.forEach(symbol => {
-    const element = document.querySelector(`[data-symbol="${symbol.replace('/', '')}"]`);
-    if (!element) return;
-
-    const data = marketData?.[symbol];
-    if (!data || !data.price) {
-      element.innerHTML = `<div class="error">${symbol} 数据暂不可用</div>`;
+  document.querySelectorAll('.instrument').forEach(async (item) => {
+    const symbol = item.dataset.symbol;
+    item.innerHTML = `<div class="loading">加载中...</div>`; // 加载提示
+    const data = await getFXData(symbol);
+    
+    if (!data || data.price === 'N/A') {
+      item.innerHTML = `<div class="error">${symbol} 数据暂不可用</div>`;
       return;
     }
 
-    element.innerHTML = `
-      <div class="symbol">${formatSymbolDisplay(symbol)}</div>
+    item.innerHTML = `
+      <div class="symbol">${symbol}</div>
       <div class="price ${data.change >= 0 ? 'rise' : 'fall'}">
         ${formatPrice(symbol, data.price)}
       </div>
       <div class="footer">
-        <span class="change">${data.change?.toFixed(2) ?? '--'}%</span>
-        <span class="time">${new Date(data.timestamp).toLocaleTimeString()}</span>
+        <span class="change">${data.change.toFixed(2)}%</span>
+        <span class="time">${data.time.toLocaleTimeString()}</span>
       </div>
     `;
   });
 }
 
-// 符号显示格式化
-function formatSymbolDisplay(symbol) {
-  const pairMap = {
-    'USD/CNY': 'USD/CNY',
-    'XAU/USD': '黄金/USD',
-    'BTC/USD': '比特币/USD'
-  };
-  return pairMap[symbol] || symbol.replace('/', ' / ');
-}
-
-// 价格格式化增强
+// 价格格式化
 function formatPrice(symbol, price) {
-  const formatter = new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: symbol.endsWith('USD') ? 'USD' : 'CNY',
-    minimumFractionDigits: symbol.includes('JPY') ? 2 : 4,
-    currencyDisplay: 'narrowSymbol'
-  });
-  
-  if (symbol.startsWith('XAU')) return `XAU ${price.toFixed(2)}`;
-  if (symbol.startsWith('BTC')) return `₿${price.toFixed(2)}`;
-  
-  return formatter.format(price);
+  const isCrypto = ['BTCUSD'].includes(symbol);
+  const isMetal = ['XAUUSD'].includes(symbol);
+  return (isCrypto ? '₿' : isMetal ? 'XAU ' : '$') + parseFloat(price).toFixed(isCrypto ? 2 : 4);
 }
 
-// 初始化
-document.addEventListener('DOMContentLoaded', () => {
-  updateMarket();
-  setInterval(updateMarket, 20000); // 调整为20秒更新
-});
+// 初始加载 + 每15秒更新
+updateMarket();
+setInterval(updateMarket, 15000);
 </script>
 
 <style>
-/* 新增移动端优化样式 */
-@media (max-width: 480px) {
+.fx-market {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  padding: 20px;
+  background: #f8fafc;
+}
+
+.instrument {
+  background: white;
+  border-radius: 8px;
+  padding: 16px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+  text-align: center;
+}
+
+.symbol {
+  font-weight: 600;
+  color: #1e293b;
+  margin-bottom: 8px;
+}
+
+.price {
+  font-size: 1.5em;
+  font-family: 'Courier New', monospace;
+}
+
+.price.rise { color: #10b981; }
+.price.fall { color: #ef4444; }
+
+.footer {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 10px;
+  font-size: 0.85em;
+  color: #64748b;
+}
+
+.loading {
+  color: #64748b;
+  font-size: 1em;
+  font-style: italic;
+}
+
+.error {
+  color: #dc2626;
+  padding: 10px;
+}
+
+@media (max-width: 640px) {
   .fx-market {
-    grid-template-columns: 1fr;
+    grid-template-columns: 1fr 1fr;
   }
-  
-  .instrument {
-    padding: 12px;
-  }
-  
   .price {
-    font-size: 1.2em;
+    font-size: 1.3em;
   }
-}
-
-/* 新增加载动画 */
-.loading::after {
-  content: "";
-  display: inline-block;
-  width: 1em;
-  height: 1em;
-  border: 2px solid #ddd;
-  border-radius: 50%;
-  border-top-color: #666;
-  animation: spin 0.6s linear infinite;
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
 }
 </style>
